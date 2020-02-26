@@ -15,3 +15,4 @@ set_global_assignment -name VERILOG_FILE Amstrad_MMU.v
 set_global_assignment -name VERILOG_FILE Amstrad_motherboard.v
 set_global_assignment -name SDC_FILE Amstrad.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Amstrad.sv
+set_global_assignment -name VERILOG_FILE sys/joydb9md.v
