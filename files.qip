@@ -1,3 +1,5 @@
+set_global_assignment -name VERILOG_FILE joydb9md.v
+set_global_assignment -name VERILOG_FILE joydb15.v
 set_global_assignment -name QIP_FILE t80/T80.qip
 set_global_assignment -name VERILOG_FILE sdram.v
 set_global_assignment -name SYSTEMVERILOG_FILE u765.sv
@@ -15,4 +17,3 @@ set_global_assignment -name VERILOG_FILE Amstrad_MMU.v
 set_global_assignment -name VERILOG_FILE Amstrad_motherboard.v
 set_global_assignment -name SDC_FILE Amstrad.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Amstrad.sv
-set_global_assignment -name VERILOG_FILE sys/joydb9md.v
