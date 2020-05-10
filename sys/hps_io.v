@@ -306,6 +306,9 @@ always@(posedge clk_sys) begin
 		end else begin
 
 			case(cmd)
+			 	// Reading user_io raw joy
+				'h0f: io_dout <= joy_raw;
+			
 				// buttons and switches
 				'h01: cfg <= io_din;
 				'h02: if(byte_cnt==1) joystick_0[15:0] <= io_din; else joystick_0[31:16] <= io_din;
@@ -475,12 +478,8 @@ always@(posedge clk_sys) begin
 							gamma_wr_addr <= {(byte_cnt[1:0]-1'b1),io_din[15:8]};
 							{gamma_wr, gamma_value} <= {1'b1,io_din[7:0]};
 							if (byte_cnt[1:0] == 3) byte_cnt <= 1;
-						end
-	endcase
- 				// Reading user_io raw joy
-				'h0f: io_dout <= joy_raw;
-// buttons and switches
-'h01: cfg <= io_din; 
+
+							end
 			endcase
 		end
 	end
