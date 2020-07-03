@@ -62,6 +62,7 @@ module emu
 	// b[0]: osd button
 	output  [1:0] BUTTONS,
 
+	input         CLK_AUDIO, // 24.576 MHz
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
@@ -153,27 +154,37 @@ localparam CONF_STR = {
 	"S0,DSK,Mount A:;",
 	"S1,DSK,Mount B:;",
 	"-;",
-	"F,E??,Load expansion;",
-	"F,CDT,Load tape;",
-	"OK,Tape sound,Disabled,Enabled;",
+	"F3,E??,Load expansion;",
 	"-;",
-	"O1,Aspect ratio,4:3,16:9;",
-	"O9A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
-	"OBD,Display,Color(GA),Color(ASIC),Green,Amber,Cyan,White;",
-	"O2,CRTC,Type 1,Type 0;",
-	"O78,Stereo mix,none,25%,50%,100%;",
+	"F4,CDT,Load tape;",
+	"OK,Tape sound,Disabled,Enabled;",
 	"-;",
 	"OUV,UserIO Joystick,Off,DB9MD,DB15 ;",
 	"OT,UserIO Players, 1 Player,2 Players;",	
 	"OI,Joysticks swap,No,Yes;",
 	"OJ,Mouse,Enabled,Disabled;",
 	"-;",
-	"OEF,Multiface 2,Enabled,Hidden,Disabled;",
-	"O6,CPU timings,Original,Fast;",
-	"OGH,FDC,Original,Fast,Disabled;",
+	
+	"P1,Audio & Video;",
+	"P1-;",
+	"P1O1,Aspect ratio,4:3,16:9;",
+	"P1O9A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
+	"P1OBD,Display,Color(GA),Color(ASIC),Green,Amber,Cyan,White;",
+	"P1-;",
+	"P1O78,Stereo mix,none,25%,50%,100%;",
+
+	"P2,Hardware;",
+	"P2-;",
+	"P2O2,CRTC,Type 1,Type 0;",
+	"P2-;",
+	"P2OEF,Multiface 2,Enabled,Hidden,Disabled;",
+	//"P2O6,CPU timings,Original,Fast;",
+	"P2OGH,FDC,Original,Fast,Disabled;",
+	"P2-;",
+	"P2O5,Distributor,Amstrad,Schneider;",
+	"P2O4,Model,CPC 6128,CPC 664;",
+
 	"-;",
-	"O5,Distributor,Amstrad,Schneider;",
-	"O4,Model,CPC 6128,CPC 664;",
 	"R0,Reset & apply model;",
 	"J,Fire 1,Fire 2,Fire 3;",
 	"V,v",`BUILD_DATE
@@ -191,18 +202,14 @@ pll pll
 	.locked(locked)
 );
 
-reg ce_4n;
-reg ce_4p, ce_ref, ce_u765;
+reg ce_ref, ce_u765;
 reg ce_16;
 always @(posedge clk_sys) begin
-	reg [3:0] div = 0;
+	reg [2:0] div = 0;
 
 	div     <= div + 1'd1;
 
-	ce_4n   <= (div == 8);
-	ce_4p   <= !div;
 	ce_ref  <= !div;
-
 	ce_u765 <= !div[2:0]; //8 MHz
 	ce_16   <= !div[1:0]; //16 MHz
 end
@@ -327,7 +334,7 @@ reg   [1:0] boot_bank;
 reg   [7:0] boot_dout;
 
 wire        rom_mask = ram_a[22] & (~rom_map[map_addr] | &{map_addr,status[15]});
-reg         rom_map[256] = '{default:0};
+reg [255:0] rom_map = '0;
 reg   [7:0] map_addr;
 always @(posedge clk_sys) map_addr <= ram_a[21:14];
 
@@ -681,26 +688,24 @@ wire [15:0] cpu_addr;
 wire  [7:0] cpu_dout;
 wire        m1, key_nmi, NMI;
 wire        io_wr, io_rd;
-wire        ce_pix_fs;
 wire        field;
 wire  [9:0] Fn;
 wire        tape_rec;
+wire  [1:0] mode;
 
 Amstrad_motherboard motherboard
 (
 	.reset(reset),
 	.clk(clk_sys),
-	.ce_4p(ce_4p),
-	.ce_4n(ce_4n),
 	.ce_16(ce_16),
 
 	.ps2_key(ps2_key),
 	.Fn(Fn),
 
-	.no_wait(status[6] & ~tape_motor),
+	//.no_wait(status[6] & ~tape_motor),
 	.ppi_jumpers({2'b11, ~status[5], 1'b1}),
 	.crtc_type(~status[2]),
-	.resync(1),
+	.sync_filter(1),
 
 	.joy1(status[18] ? joy2 : joy1),
 	.joy2(status[18] ? joy1 : joy2),
@@ -712,8 +717,8 @@ Amstrad_motherboard motherboard
 	.audio_l(audio_l),
 	.audio_r(audio_r),
 
-	.pal(|status[13:11]),
-	.ce_pix_fs(ce_pix_fs),
+	.mode(mode),
+
 	.hblank(hbl),
 	.vblank(vbl),
 	.hsync(hs),
@@ -726,6 +731,7 @@ Amstrad_motherboard motherboard
 	.vram_din(vram_dout),
 	.vram_addr(vram_addr),
 
+	.rom_map(rom_map),
 	.ram64k(model),
 	.mem_rd(mem_rd),
 	.mem_wr(mem_wr),
@@ -743,9 +749,39 @@ Amstrad_motherboard motherboard
 
 //////////////////////////////////////////////////////////////////////
 
+reg ce_pix_fs;
+always @(posedge clk_sys) begin
+	reg [1:0] mode_fs;
+	reg [1:0] mode_next;
+	reg [1:0] cycle;
+	reg       old_vsync;
+
+	ce_pix_fs <= 0;
+
+	if (ce_16) begin
+		cycle <= cycle + 1'd1;
+
+		case(mode_fs)
+			2:   ce_pix_fs <= 1;
+			1:   ce_pix_fs <= !cycle[0];
+			0,3: ce_pix_fs <= !cycle[1:0];
+		endcase
+
+		old_vsync <= vs;
+		if(~old_vsync & vs) begin
+			mode_fs <= mode_next; //HQ2x friendly vmode
+			mode_next <= 0;
+			cycle <= 0;
+		end
+
+		// choose highest pixel rate during the wholw active time
+		if (~hbl && ~vbl && ~&mode && mode > mode_next) mode_next <= mode;
+	end
+end
+
 wire ce_pix = hq2x ? ce_pix_fs : ce_16;
 
-wire [7:0] b, g, r;
+wire [1:0] b, g, r;
 wire       hs, vs, hbl, vbl;
 
 color_mix color_mix
