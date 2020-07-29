@@ -24,6 +24,8 @@ module Amstrad_motherboard
 
 	input   [6:0] joy1,
 	input   [6:0] joy2,
+	input         right_shift_mod,
+	input         keypad_mod,
 	input  [10:0] ps2_key,
 	input  [24:0] ps2_mouse,
 	output        key_nmi,
@@ -56,26 +58,34 @@ module Amstrad_motherboard
 	output [14:0] vram_addr,
 
 	input [255:0] rom_map,
-
 	input         ram64k,
 	output [22:0] mem_addr,
 	output        mem_rd,
 	output        mem_wr,
+
+	// expansion port
+	output        phi_n,
+	output        phi_en_n,
+	output        phi_en_p,
 	output [15:0] cpu_addr,
 	output  [7:0] cpu_dout,
 	input   [7:0] cpu_din,
-	output        io_wr,
-	output        io_rd,
+	output        iorq,
+	output        mreq,
+	output        rd,
+	output        wr,
 	output        m1,
-	input         nmi
+	input         irq,
+	input         nmi,
+	output        cursor
 );
 
 wire crtc_shift;
 
 assign vram_addr = {MA[13:12], RA[2:0], MA[9:0]};
 
-assign io_rd = ~(RD_n | IORQ_n);
-assign io_wr = ~(WR_n | IORQ_n);
+wire io_rd = ~(RD_n | IORQ_n);
+wire io_wr = ~(WR_n | IORQ_n);
 
 assign mem_rd = ~(RD_n | MREQ_n);
 assign mem_wr = ~(WR_n | MREQ_n);
@@ -83,6 +93,10 @@ assign mem_wr = ~(WR_n | MREQ_n);
 assign cpu_dout = D;
 assign cpu_addr = A;
 assign m1 = ~M1_n;
+assign iorq = ~IORQ_n;
+assign mreq = ~MREQ_n;
+assign rd = ~RD_n;
+assign wr = ~WR_n;
 
 wire [15:0] A;
 wire  [7:0] D;
@@ -114,7 +128,7 @@ T80pa CPU
 	.rfsh_n(RFSH_n),
 
 	.busrq_n(1),
-	.int_n(INT_n),
+	.int_n(INT_n & ~irq),
 	.nmi_n(~nmi),
 	.wait_n(ready | (IORQ_n & MREQ_n) | no_wait) // workaround a bug in T80pa: should wait only in memory or io cycles
 );
@@ -142,6 +156,7 @@ UM6845R CRTC
 	.HSYNC(crtc_hs),
 	.DE(crtc_de),
 	.FIELD(field),
+	.CURSOR(cursor),
 
 	.MA(MA),
 	.RA(RA)
@@ -167,18 +182,16 @@ always @(posedge clk) begin
 end
 
 wire cclk_en_n, cclk_en_p;
-wire phi_en_n, phi_en_p;
 wire e244_n, cpu_n, ras_n, cas_n;
 wire [7:0] ga_din = e244_n ? vram_d : D;
 wire ready;
-wire rom;
+wire romen_n;
 
 wire hsync_ga, hsync_filtered;
 wire vsync_ga, vsync_filtered;
 
-wire vblank_ga;
 wire hblank_filtered;
-wire vblank_filtered;
+wire vblank_ga, vblank_filtered;
 
 assign hsync = sync_filter ? hsync_filtered : hsync_ga;
 assign vsync = sync_filter ? vsync_filtered : vsync_ga;
@@ -201,6 +214,7 @@ crt_filter crt_filter
 ga40010 GateArray (
 	.clk(clk),
 	.cen_16(ce_16),
+	.fast(no_wait),
 	.RESET_N(~reset),
 	.A(A[15:14]),
 	.D(ga_din),
@@ -214,7 +228,7 @@ ga40010 GateArray (
 	.CCLK(),
 	.CCLK_EN_P(cclk_en_p),
 	.CCLK_EN_N(cclk_en_n),
-	.PHI_N(),
+	.PHI_N(phi_n),
 	.PHI_EN_N(phi_en_n),
 	.PHI_EN_P(phi_en_p),
 	.RAS_N(ras_n),
@@ -224,7 +238,7 @@ ga40010 GateArray (
 	.CPU_N(cpu_n),
 	.MWE_N(),
 	.E244_N(e244_n),
-	.ROM(rom),
+	.ROMEN_N(romen_n),
 	.RAMRD_N(),
 	.HSYNC_O(hsync_ga),
 	.VSYNC_O(vsync_ga),
@@ -245,7 +259,7 @@ Amstrad_MMU MMU
 	.CLK(clk),
 	.reset(reset),
 	.ram64k(ram64k),
-	.romen_n(~rom | mem_wr),
+	.romen_n(romen_n),
 	.rom_map(rom_map),
 	.A(A),
 	.D(D),
@@ -312,6 +326,9 @@ hid HID
 (
 	.reset(reset),
 	.clk(clk),
+	
+	.right_shift_mod(right_shift_mod),
+	.keypad_mod(keypad_mod),
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
