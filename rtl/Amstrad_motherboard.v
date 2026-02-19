@@ -28,6 +28,8 @@ module Amstrad_motherboard
 	input         keypad_mod,
 	input  [10:0] ps2_key,
 	input  [24:0] ps2_mouse,
+	output        joy1_sel,
+	output        joy2_sel,
 	output        key_nmi,
 	output        key_reset,
 	output  [9:0] Fn,
@@ -63,7 +65,7 @@ module Amstrad_motherboard
 	output [22:0] mem_addr,
 	output        mem_rd,
 	output        mem_wr,
-
+	output        romen,
 	// expansion port
 	output        phi_n,
 	output        phi_en_n,
@@ -76,6 +78,7 @@ module Amstrad_motherboard
 	output        rd,
 	output        wr,
 	output        m1,
+	output        ga_ready,
 	input         irq,
 	input         nmi,
 	output        cursor
@@ -96,7 +99,8 @@ assign iorq = ~IORQ_n;
 assign mreq = ~MREQ_n;
 assign rd = ~RD_n;
 assign wr = ~WR_n;
-
+assign romen = ~romen_n;
+assign ga_ready = ready;
 wire [15:0] A;
 wire  [7:0] D;
 wire RD_n;
@@ -345,5 +349,8 @@ hid HID
 	.key_reset(key_reset),
 	.Fn(Fn)
 );
+
+assign joy1_sel = (portC[3:0] == 9);
+assign joy2_sel = (portC[3:0] == 6);
 
 endmodule
