@@ -28,6 +28,8 @@ module Amstrad_motherboard
 	input         keypad_mod,
 	input  [10:0] ps2_key,
 	input  [24:0] ps2_mouse,
+	output        joy1_sel,
+	output        joy2_sel,
 	output        key_nmi,
 	output        key_reset,
 	output  [9:0] Fn,
@@ -36,6 +38,22 @@ module Amstrad_motherboard
 	input         crtc_type,
 	input         sync_filter,
 	input         no_wait,
+
+	input         sna_load,
+	input [211:0] sna_cpu_dir,
+	input   [4:0] sna_crtc_addr,
+	input [143:0] sna_crtc_regs,
+	input   [4:0] sna_ga_inksel,
+	input [135:0] sna_ga_palette,
+	input   [7:0] sna_ga_config,
+	input   [7:0] sna_ram_config,
+	input   [7:0] sna_rom_select,
+	input   [7:0] sna_ppi_a,
+	input   [7:0] sna_ppi_b,
+	input   [7:0] sna_ppi_c,
+	input   [7:0] sna_ppi_control,
+	input   [3:0] sna_psg_addr,
+	input [127:0] sna_psg_regs,
 
 	input         tape_in,
 	output        tape_out,
@@ -63,7 +81,7 @@ module Amstrad_motherboard
 	output [22:0] mem_addr,
 	output        mem_rd,
 	output        mem_wr,
-
+	output        romen,
 	// expansion port
 	output        phi_n,
 	output        phi_en_n,
@@ -76,6 +94,7 @@ module Amstrad_motherboard
 	output        rd,
 	output        wr,
 	output        m1,
+	output        ga_ready,
 	input         irq,
 	input         nmi,
 	output        cursor
@@ -96,7 +115,8 @@ assign iorq = ~IORQ_n;
 assign mreq = ~MREQ_n;
 assign rd = ~RD_n;
 assign wr = ~WR_n;
-
+assign romen = ~romen_n;
+assign ga_ready = ready;
 wire [15:0] A;
 wire  [7:0] D;
 wire RD_n;
@@ -129,7 +149,9 @@ T80pa CPU
 	.busrq_n(1),
 	.int_n(INT_n & ~irq),
 	.nmi_n(~nmi),
-	.wait_n(ready | (IORQ_n & MREQ_n) | no_wait) // workaround a bug in T80pa: should wait only in memory or io cycles
+	.wait_n(ready | (IORQ_n & MREQ_n) | no_wait), // workaround a bug in T80pa: should wait only in memory or io cycles
+	.DIRSet(sna_load),
+	.DIR(sna_cpu_dir)
 );
 
 wire crtc_hs, crtc_vs, crtc_de;
@@ -151,6 +173,10 @@ UM6845R CRTC
 	.RS(A[8]),
 	.DI(~RD_n ? 8'hFF : D),
 	.DO(crtc_dout),
+
+	.SNA_LOAD(sna_load),
+	.SNA_ADDR(sna_crtc_addr),
+	.SNA_REGS(sna_crtc_regs),
 
 	.VSYNC(crtc_vs),
 	.HSYNC(crtc_hs),
@@ -254,7 +280,11 @@ ga40010 GateArray (
 	.GREEN_OE_N(green[0]),
 	.GREEN(green[1]),
 	.RED_OE_N(red[0]),
-	.RED(red[1])
+	.RED(red[1]),
+	.SNA_LOAD(sna_load),
+	.SNA_INKSEL(sna_ga_inksel),
+	.SNA_PALETTE(sna_ga_palette),
+	.SNA_CONFIG(sna_ga_config)
 );
 
 Amstrad_MMU MMU
@@ -267,6 +297,9 @@ Amstrad_MMU MMU
 	.A(A),
 	.D(D),
 	.io_WR(io_wr),
+	.sna_load(sna_load),
+	.sna_ram_config(sna_ram_config),
+	.sna_rom_select(sna_rom_select),
 	.ram_A(mem_addr)
 );
 
@@ -292,7 +325,13 @@ i8255 PPI
 	.ipb({tape_in, 2'b11, ppi_jumpers, crtc_vs}),
 	.opb(),
 	.ipc(8'hFF), 
-	.opc(portC)
+	.opc(portC),
+
+	.sna_load(sna_load),
+	.sna_opa(sna_ppi_a),
+	.sna_opb(sna_ppi_b),
+	.sna_opc(sna_ppi_c),
+	.sna_control(sna_ppi_control)
 );
 
 assign tape_motor = portC[4];
@@ -321,7 +360,11 @@ YM2149 PSG
 	.CHANNEL_C(ch_c),
 
 	.IOA_in(kbd_out),
-	.IOB_in(8'hFF)
+	.IOB_in(8'hFF),
+
+	.SNA_LOAD(sna_load),
+	.SNA_ADDR(sna_psg_addr),
+	.SNA_REGS(sna_psg_regs)
 );
 
 wire [7:0] kbd_out;
@@ -345,5 +388,8 @@ hid HID
 	.key_reset(key_reset),
 	.Fn(Fn)
 );
+
+assign joy1_sel = (portC[3:0] == 9);
+assign joy2_sel = (portC[3:0] == 6);
 
 endmodule
