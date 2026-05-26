@@ -398,7 +398,9 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_in({status[31:21],~status[20],status[19:0]}),
+	// [MiSTer-DB9 BEGIN] - widened to 128 bits, preserve [127:32] (joy_type at [127:125], joy_2p at [124])
+	.status_in({status[127:21],~status[20],status[19:0]}),
+	// [MiSTer-DB9 END]
 	.status_set(Fn[1]),
 	.status_menumask({en270p,1'b0}),
 
